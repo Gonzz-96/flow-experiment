@@ -5,6 +5,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import dev.gonz.flow.experiment.databinding.ActivityMainBinding
+import dev.gonz.flow.experiment.db.StopwatchDb
+import dev.gonz.flow.experiment.stopwatch.Stopwatch
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -22,33 +24,27 @@ class MainActivity : AppCompatActivity() {
             setContentView(root)
         }
 
-        myFlow = flow {
-            var counter = 1
-            while (true) {
-                emit(counter++)
-                if (counter > 10_000) {
-                    break
-                }
-                delay(10L)
-            }
-        }
-
         binding.fab.clicksFlow()
-                .onEach { launchFlow() }
-                .launchIn(lifecycleScope)
+            .onEach { launchStopwatch() }
+            .launchIn(lifecycleScope)
     }
 
-    private fun launchFlow() {
-        if (flowJob != null && flowJob!!.isActive) {
-            flowJob?.cancel()
+    private fun launchStopwatch() {
+        if (flowJob != null) {
+            flowJob!!.cancel()
+            flowJob = null
+            return
         }
-        flowJob = myFlow.flowOn(Dispatchers.Default)
-                .onEach { number ->
-                    binding.tvCounter.text = number.toString()
-                }
-                .onCompletion {
-                    Toast.makeText(this@MainActivity, "Flow was finished!", Toast.LENGTH_SHORT).show()
-                }
-                .launchIn(lifecycleScope)
+
+        val db = StopwatchDb.getDb(applicationContext)
+
+        val stopwatch = Stopwatch(Dispatchers.Default, db.dao(), 1_000L)
+
+        flowJob = stopwatch.stopwatchFlow()
+            .onEach { binding.tvCounter.text = it.toClock() }
+            .launchIn(lifecycleScope)
     }
 }
+
+fun Long.toClock() =
+    "${this / 60}:${if (this % 60 < 10) "0${this % 60}" else this % 60}"
